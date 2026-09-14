@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "S3AllBuckets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket",
+        "s3:DeleteObject",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::weather-pipeline-bronze-ap-south-1-dev",
+        "arn:aws:s3:::weather-pipeline-bronze-ap-south-1-dev/*",
+        "arn:aws:s3:::weather-pipeline-silver-ap-south-1-dev",
+        "arn:aws:s3:::weather-pipeline-silver-ap-south-1-dev/*",
+        "arn:aws:s3:::weather-pipeline-gold-ap-south-1-dev",
+        "arn:aws:s3:::weather-pipeline-gold-ap-south-1-dev/*"
+      ]
+    }
+  ]
+}
