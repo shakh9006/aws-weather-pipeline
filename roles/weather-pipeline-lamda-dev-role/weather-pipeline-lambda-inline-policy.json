@@ -52,7 +52,7 @@
       "Sid": "SNSAccess",
       "Effect": "Allow",
       "Action": "sns:Publish",
-      "Resource": "arn:aws:sns:ap-south-1:423623828360:weather-pipeline-sns-dev"
+      "Resource": "arn:aws:sns:{REGION}:{ACCOUNT_ID}:weather-pipeline-sns-dev"
     }
   ]
 }
