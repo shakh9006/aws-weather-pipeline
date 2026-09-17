@@ -28,21 +28,21 @@ def fetch_weather(city: str) -> dict:
         "units": "metric"
     })
     url = f"{API_BASE}?{params}"
-    req = Request(url, headers={'Accept': 'application/json'})
+    req = Request(url, headers={"Accept": "application/json"})
     with urlopen(req, timeout=20) as resp:
-        return json.loads(resp.read().decode('utf-8'))
+        return json.loads(resp.read().decode("utf-8"))
 
 def write_to_s3(data: dict, key: str) -> None:
     body = json.dumps(data, ensure_ascii=False, indent=2)
     s3_client.put_object(
         Bucket=BUCKET,
         Key=key,
-        Body=body.encode('utf-8'),
-        ContentType='application/json',
+        Body=body.encode("utf-8"),
+        ContentType="application/json",
         Metadata={
-            'ingestion_timestamp': datetime.now(timezone.utc).isoformat(),
-            'source': 'openweather_api'
-        }
+            "ingestion_timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": "openweather_api",
+        },
     )
 
 def send_alert(subject: str, message: str) -> None:
@@ -52,9 +52,9 @@ def send_alert(subject: str, message: str) -> None:
 
 def lambda_handler(event, context):
     now = datetime.now(timezone.utc)
-    date_partition = now.strftime('%Y-%m-%d')
-    hour_partition = now.strftime('%H')
-    ingestion_id = now.strftime('%Y%m%d_%H%M%S')
+    date_partition = now.strftime("%Y-%m-%d")
+    hour_partition = now.strftime("%H")
+    ingestion_id = now.strftime("%Y%m%d_%H%M%S")
 
     results = {"success": [], "failed": []}
 
@@ -66,7 +66,7 @@ def lambda_handler(event, context):
                 "ingestion_id": ingestion_id,
                 "city_requested": city,
                 "ingestion_timestamp": now.isoformat(),
-                "source": "openweather_api"
+                "source": "openweather_api",
             }
 
             city_slug = city.lower().replace(" ", "_")
@@ -80,9 +80,11 @@ def lambda_handler(event, context):
             )
 
             write_to_s3(data, key)
+            logger.info(f"OK {city} -> s3://{BUCKET}/{key}")
+            results["success"].append(city)
 
         except HTTPError as e:
-            body = e.read().decode('utf-8') if hasattr(e, "read") else ""
+            body = e.read().decode("utf-8") if hasattr(e, "read") else ""
             logger.error(f"HTTP {e.code} for {city}: {body}")
             results["failed"].append({"city": city, "error": f"HTTP {e.code}"})
         except (URLError, Exception) as e:
@@ -90,8 +92,8 @@ def lambda_handler(event, context):
             results["failed"].append({"city": city, "error": str(e)})
 
     summary = (f"Ingestion {ingestion_id}: "
-            f"success {len(results['success'])}/{len(CITIES)}, "
-            f"failed {len(results['failed'])}.")
+            f"success {len(results["success"])}/{len(CITIES)}, "
+            f"failed {len(results["failed"])}.")
     logger.info(summary)
     
 
