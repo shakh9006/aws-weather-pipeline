@@ -20,7 +20,6 @@ CITIES = [c.strip() for c in os.environ.get("WEATHER_CITIES", "London,Tashkent,M
 SNS_TOPIC = os.environ.get("SNS_ALERT_TOPIC_ARN", "")
 API_BASE = "https://api.openweathermap.org/data/2.5/weather"
 
-
 def fetch_weather(city: str) -> dict:
     params = urlencode({
         "q": city,

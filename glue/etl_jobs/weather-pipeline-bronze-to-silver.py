@@ -64,7 +64,10 @@ select_exprs = [
     F.col("coord.lat").cast(DoubleType()).alias("lat"),
     F.col("coord.lon").cast(DoubleType()).alias("lon"),
     F.col("main.temp").cast(DoubleType()).alias("temp"),
-    F.col("main.feels_like").cast(DoubleType()).alias("feels_like"),
+    F.coalesce(
+        F.col("main.feels_like.double"),
+        F.col("main.feels_like.int").cast(DoubleType())
+    ).alias("feels_like"),
     F.col("main.temp_min").cast(DoubleType()).alias("temp_min"),
     F.col("main.temp_max").cast(DoubleType()).alias("temp_max"),
     F.col("main.pressure").cast(LongType()).alias("pressure"),
