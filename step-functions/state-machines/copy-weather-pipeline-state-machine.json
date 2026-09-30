@@ -1,0 +1,187 @@
+{
+  "Comment": "Weather Data Pipeline — full orchestration",
+  "StartAt": "IngestWeather",
+  "States": {
+    "IngestWeather": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:ap-south-1:423623828360:function:weather-pipeline-ingestion-dev",
+        "Payload": {
+          "triggered_by": "step_functions",
+          "execution_id.$": "$$.Execution.Id"
+        }
+      },
+      "ResultPath": "$.ingestion_result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 20,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyIngestionFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "WaitForConsistency"
+    },
+
+    "WaitForConsistency": {
+      "Type": "Wait",
+      "Seconds": 10,
+      "Next": "RunBronzeToSilver"
+    },
+
+    "RunBronzeToSilver": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "weather-pipeline-bronze-to-silver"
+      },
+      "ResultPath": "$.bronze_silver_result",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyTransformFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "RunDataQuality"
+    },
+
+    "RunDataQuality": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:ap-south-1:423623828360:function:weather-pipeline-data-quality-dev",
+        "Payload": {
+          "database": "weather_pipeline_silver_dev",
+          "table": "clean_observations"
+        }
+      },
+      "ResultPath": "$.dq_result",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "EvaluateDataQuality"
+    },
+
+    "EvaluateDataQuality": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.dq_result.Payload.quality_passed",
+          "BooleanEquals": true,
+          "Next": "RunSilverToGold"
+        }
+      ],
+      "Default": "NotifyDQFailure"
+    },
+
+    "RunSilverToGold": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "weather-pipeline-silver-to-gold"
+      },
+      "ResultPath": "$.silver_gold_result",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyGoldFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "NotifySuccess"
+    },
+
+    "NotifySuccess": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:ap-south-1:423623828360:weather-pipeline-sns-dev",
+        "Subject": "[Weather Pipeline] SUCCESS",
+        "Message.$": "States.Format('Pipeline run {} completed. All layers updated.', $$.Execution.Id)"
+      },
+      "End": true
+    },
+
+    "NotifyIngestionFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:ap-south-1:423623828360:weather-pipeline-sns-dev",
+        "Subject": "[Weather Pipeline] FAILURE — Ingestion",
+        "Message.$": "States.JsonToString($.error)"
+      },
+      "Next": "FailState"
+    },
+
+    "NotifyTransformFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:ap-south-1:423623828360:weather-pipeline-sns-dev",
+        "Subject": "[Weather Pipeline] FAILURE — Bronze to Silver",
+        "Message.$": "States.JsonToString($.error)"
+      },
+      "Next": "FailState"
+    },
+
+    "NotifyDQFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:ap-south-1:423623828360:weather-pipeline-sns-dev",
+        "Subject": "[Weather Pipeline] STOPPED — Data quality failed",
+        "Message.$": "States.JsonToString($.dq_result)"
+      },
+      "Next": "FailState"
+    },
+
+    "NotifyGoldFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:ap-south-1:423623828360:weather-pipeline-sns-dev",
+        "Subject": "[Weather Pipeline] FAILURE — Silver to Gold",
+        "Message.$": "States.JsonToString($.error)"
+      },
+      "Next": "FailState"
+    },
+
+    "FailState": {
+      "Type": "Fail",
+      "Comment": "Помечаем прогон как проваленный, чтобы это было видно в метриках"
+    }
+  }
+}
